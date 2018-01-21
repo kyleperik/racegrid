@@ -210,12 +210,12 @@ var renderFunctions = {
             ),
             endPoint
         );
-        tempPath.style = { strokeColor: '#aaa', opacity: .2 };
+        tempPath.style = { strokeColor: s.racecars[s.turn].color };
         tempPath.opacity = 0.5;
         tempPoint = new paper.Shape.Circle(
             endPoint, s.resolution / 5
         );
-        tempPoint.style = { fillColor: '#aaa' };
+        tempPoint.style = { fillColor: s.racecars[s.turn].color };
         tempPoint.opacity = 0.5;
         return [tempPath, tempPoint];
     },
@@ -305,9 +305,7 @@ window.onload = function () {
     );
 
     canvas.onclick = function () {
-        if (state.boundryMode) {
-            
-        } else {
+        if (!state.boundryMode) {
             var r = state.racecars[state.turn];
             var point = roundPoint(
                 state.cursor,
@@ -322,7 +320,18 @@ window.onload = function () {
                 Math.abs(newV.x - r.v.x) > 1 ||
                 Math.abs(newV.y - r.v.y) > 1
             ) { return; }
-            mutations.setVelocity(newV, state.turn);
+            var isInBounds = renderings['boundry'][0].contains(
+                expandPoint(point, state.resolution)
+            );
+            console.log(isInBounds);
+            if (isInBounds) {
+                mutations.setVelocity(newV, state.turn);
+            } else {
+                mutations.setVelocity({
+                    x: 0,
+                    y: 0
+                } , state.turn);
+            }
             mutations.addTrace(point, state.turn);
             mutations.setTurn((state.turn + 1) % state.racecars.length);
         }
