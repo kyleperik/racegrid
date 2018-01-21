@@ -2,6 +2,11 @@ function range(l) {
     return Array.from(new Array(l), (x, i) => i);
 }
 
+Array.prototype.flatten = function (f) {
+    f = f || ((x) => x);
+    return [].concat.apply([], f(this));
+}
+
 function makeGrid(x, y, lx, ly, r) {
     p = [
         {s: x, e: lx},
@@ -35,6 +40,8 @@ function roundPoint(p, r) {
 
 var state = {
     turn: 0,
+    boundryMode: true,
+    boundry: [],
     canvasHeight: 0,
     canvasWidth: 0,
     canvasOffsetX: 0,
@@ -59,58 +66,95 @@ var state = {
     cursor: {
         x: 10,
         y: 30
-    }
+    },
+    mousedown: false,
+    boundryHelp: [
+        { letter: 'd' },
+    ]
 };
 
 var mutations = {
     setCanvasDimentions: (h, w) => {
         state.canvasHeight = h;
         state.canvasWidth = w;
-        render('grid');
-        render('tempStuff');
-        render('racecarTraces');
+        render('all');
     },
     setCanvasOffset: (x, y) => {
         state.canvasOffsetX = x;
         state.canvasOffsetY = y;
-        render('grid');
-        render('tempStuff');
-        render('racecarTraces');
+        render('all');
     },
     setResolution: r => {
         state.resolution = r;
-        render('grid');
-        render('tempStuff');
-        render('racecarTraces');
+        render('all');
     },
     setTurn: (v) => {
         state.turn = v;
         render('tempStuff');
+        render('velocityBox');
     },
     setCursor: p => {
         state.cursor = p;
         render('tempStuff');
     },
+    setMousedown: v => {
+        state.mousedown = v;
+    },
     addTrace: (p, i) => {
         state.racecars[i].trace.push(p);
-        render('tempStuff');
-        render('racecarTraces');
+        render('tempStuff', 'racecarTraces');
     },
     setVelocity: (v, i) => {
         state.racecars[i].v = v;
-    }
+        render('velocityBox');
+    },
+    setBoundryMode: v => {
+        state.boundryMode = v;
+        render('velocityBox', 'tempStuff', 'boundry', 'help');
+    },
+    addBoundryPoint: p => {
+        state.boundry.push(p);
+        render('boundry');
+    },
 }
 
 var renderings = {};
 
-function render (thing) {
-    var existingRenderings = renderings[thing];
-    if (existingRenderings) {
-        existingRenderings.forEach(r => r.remove());
-    }
+var renderShortcuts = {
+    'all': [
+        'grid',
+        'racecarTraces',
+        'tempStuff',
+        'velocityBox',
+        'boundry',
+        'help',
+    ]
+}
 
-    renderings[thing] = renderFunctions[thing](state);
+function render () {
+    var args = Array.from(arguments);
+    var things = args.filter(
+        t => !renderShortcuts[t]
+    );
 
+    var shortcut = args.map(
+        t => renderShortcuts[t]
+    ).filter(s => s).flatten();
+
+    var allThings = things.concat(shortcut);
+    allThings.forEach(thing => {
+        var existingRenderings = renderings[thing];
+        if (existingRenderings) {
+            existingRenderings.forEach(r => {
+                if (!r.remove) {
+                    throw new Error(r + ' can not be removed for ' + thing);
+                }
+                r.remove()
+            });
+        }
+
+        renderings[thing] = renderFunctions[thing](state);
+    });
     paper.view.draw();
 }
 
@@ -142,19 +186,17 @@ var renderFunctions = {
             };
             return d;
         }));
-        var lines = points.map((r, j) => r.slice(0, -1).map((p, i) => {
-            var l = new paper.Path(
-                p,
-                r[i + 1]
-            );
+        var lines = points.map((r, j) => {
+            var l = new paper.Path(r);
             l.style = {
                 strokeColor: s.racecars[j].color
             };
             return l;
-        }));
-        return [].concat.apply([], dots.concat(lines));
+        });
+        return [].concat.apply([], dots.concat([lines]));
     },
     tempStuff: (s) => {
+        if (s.boundryMode) return [];
         var endPoint = expandPoint(
             roundPoint(s.cursor, s.resolution),
             s.resolution
@@ -168,14 +210,80 @@ var renderFunctions = {
             ),
             endPoint
         );
-        tempPath.style = {
-            strokeColor: '#aaf'
-        };
+        tempPath.style = { strokeColor: '#aaa', opacity: .2 };
+        tempPath.opacity = 0.5;
         tempPoint = new paper.Shape.Circle(
             endPoint, s.resolution / 5
         );
-        tempPoint.style = { fillColor: '#aaf' }
+        tempPoint.style = { fillColor: '#aaa' };
+        tempPoint.opacity = 0.5;
         return [tempPath, tempPoint];
+    },
+    velocityBox: (s) => {
+        if (s.boundryMode) return [];
+        var r = s.racecars[s.turn];
+        var pos = r.trace[r.trace.length - 1];
+        var aboutNewPos = {
+            x: pos.x + r.v.x,
+            y: pos.y + r.v.y,
+        }
+        var corners = [[-1, -1], [1, -1], [1, 1], [-1, 1]]
+        var path = new paper.Path(corners.map(x =>
+            expandPoint({
+                x: aboutNewPos.x + x[0],
+                y: aboutNewPos.y + x[1]
+            }, s.resolution)
+        ));
+        path.closed = true;
+        path.style = { strokeColor: 'purple' };
+        return [path];
+    },
+    boundry: function (s) {
+        var path = new paper.Path(s.boundry.map(
+            p => new paper.Point(p.x, p.y)
+        ));
+        path.style = {
+            strokeColor: '#333'
+        };
+        path.closed = !s.boundryMode;
+        return [path];
+    },
+    help: function (s) {
+        if (!s.boundryMode) return [];
+        return s.boundryHelp.map((h, i) => {
+            var padding = 5;
+            var size = new paper.Size(
+                30, 30
+            )
+            var pos = {
+                x: s.canvasWidth - (
+                    size.width + padding +
+                    i * (size.width + padding * 2)
+                ),
+                y: s.canvasHeight - (
+                    size.height + padding
+                )
+            }
+            var box = new paper.Path.Rectangle(
+                new paper.Point(
+                    pos.x,
+                    pos.y
+                ),
+                size
+            );
+            box.style = {
+                strokeColor: '#555',
+                fillColor: 'white',
+            };
+            box.opacity = 0.5;
+            var letter = new paper.PointText(
+                new paper.Point(
+                    pos.x + 12, pos.y + 18
+                )
+            );
+            letter.content = h.letter;
+            return [box, letter];
+        }).flatten();
     }
 };
 
@@ -185,37 +293,39 @@ window.onload = function () {
     paper.setup(canvas);
 
     mutations.setCanvasDimentions(
-        canvas.height,
-        canvas.width
+        canvas.clientHeight,
+        canvas.clientWidth
     );
 
-    render('grid');
-    render('racecarTraces');
-    render('tempStuff');
+    render('all');
 
     window.onresize = () => mutations.setCanvasDimentions(
-        canvas.height,
-        canvas.width
+        canvas.clientHeight,
+        canvas.clientWidth
     );
 
     canvas.onclick = function () {
-        var r = state.racecars[state.turn];
-        var point = roundPoint(
-            state.cursor,
-            state.resolution
-        );
-        var lastPoint = r.trace[r.trace.length - 1];
-        var newV = {
-            x: point.x - lastPoint.x,
-            y: point.y - lastPoint.y
-        };
-        if (
-            Math.abs(newV.x - r.v.x) > 1 ||
-            Math.abs(newV.y - r.v.y) > 1
-        ) { return; }
-        mutations.setVelocity(newV, state.turn);
-        mutations.addTrace(point, state.turn);
-        mutations.setTurn((state.turn + 1) % state.racecars.length);
+        if (state.boundryMode) {
+            
+        } else {
+            var r = state.racecars[state.turn];
+            var point = roundPoint(
+                state.cursor,
+                state.resolution
+            );
+            var lastPoint = r.trace[r.trace.length - 1];
+            var newV = {
+                x: point.x - lastPoint.x,
+                y: point.y - lastPoint.y
+            };
+            if (
+                Math.abs(newV.x - r.v.x) > 1 ||
+                Math.abs(newV.y - r.v.y) > 1
+            ) { return; }
+            mutations.setVelocity(newV, state.turn);
+            mutations.addTrace(point, state.turn);
+            mutations.setTurn((state.turn + 1) % state.racecars.length);
+        }
     };
 
     canvas.onmousewheel = function (e) {
@@ -227,7 +337,27 @@ window.onload = function () {
 
     paper.view.onMouseMove = function (e) {
         mutations.setCursor(e.point);
+        if (state.mousedown && state.boundryMode) {
+            mutations.addBoundryPoint(e.point);
+        }
     };
+    paper.view.onMouseDown = function (e) {
+        mutations.setMousedown(true);
+        if (state.boundryMode) {
+            mutations.addBoundryPoint(state.cursor);
+        }
+    };
+    paper.view.onMouseUp = function (e) {
+        mutations.setMousedown(false);
+    };
+
+    paper.view.onKeyDown = function (e) {
+        if (state.boundryMode) {
+            if (e.key === 'd') {
+                mutations.setBoundryMode(false);
+            }
+        }
+    }
 
     paper.view.draw();
 };
