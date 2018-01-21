@@ -33,18 +33,6 @@ function roundPoint(p, r) {
     }
 }
 
-var tempPoint, tempPath;
-
-var racecarState = [
-    { x: 10, y: 5, vx: 0, vy: 0 },
-    { x: 12, y: 5, vx: 0, vy: 0 }
-];
-
-var racecarTraces = [
-    [],
-    []
-]
-
 var state = {
     turn: 0,
     canvasHeight: 0,
@@ -53,8 +41,20 @@ var state = {
     canvasOffsetY: 0,
     resolution: 15,
     racecars: [
-        { p: { x: 10, y: 5 }, v: { x: 0, y: 0 }, color: 'blue', },
-        { p: { x: 12, y: 5 }, v: { x: 0, y: 0 }, color: 'red', },
+        {
+            v: { x: 0, y: 0 },
+            trace: [
+                { x: 10, y: 5 }
+            ],
+            color: 'blue',
+        },
+        {
+            v: { x: 0, y: 0 },
+            trace: [
+                { x: 12, y: 5 }
+            ],
+            color: 'red',
+        },
     ],
     cursor: {
         x: 10,
@@ -85,11 +85,19 @@ var mutations = {
     },
     setTurn: (v) => {
         state.turn = v;
-        render.tempStuff(state);
+        render('tempStuff');
     },
     setCursor: p => {
         state.cursor = p;
         render('tempStuff');
+    },
+    addTrace: (p, i) => {
+        state.racecars[i].trace.push(p);
+        render('tempStuff');
+        render('racecarTraces');
+    },
+    setVelocity: (v, i) => {
+        state.racecars[i].v = v;
     }
 }
 
@@ -109,8 +117,8 @@ function render (thing) {
 var renderFunctions = {
     grid: (s) => {
         var paths = makeGrid(
-            s.resolution - s.canvasOffsetX % s.resolution,
-            s.resolution - s.canvasOffsetY % s.resolution,
+            s.canvasOffsetX % s.resolution - s.resolution,
+            s.canvasOffsetY % s.resolution - s.resolution,
             s.canvasWidth, s.canvasHeight,
             s.resolution
         );
@@ -122,17 +130,29 @@ var renderFunctions = {
         return paths;
     },
     racecarTraces: (s) => {
-        var points = s.racecars.map((racecar, i) => {
-            p = paper.Shape.Circle(
-                expandPoint(racecar.p, s.resolution),
-                s.resolution / 5
-            );
-            p.style = {
-                fillColor: racecar.color
+        var points = s.racecars.map(
+            racecar => racecar.trace.map(
+                p => expandPoint(p, s.resolution)
+            )
+        );
+        var dots = points.map((r, i) => r.map(p => {
+            var d = paper.Shape.Circle(p, s.resolution / 5);
+            d.style = {
+                fillColor: s.racecars[i].color
             };
-            return p;
-        });
-        return points;
+            return d;
+        }));
+        var lines = points.map((r, j) => r.slice(0, -1).map((p, i) => {
+            var l = new paper.Path(
+                p,
+                r[i + 1]
+            );
+            l.style = {
+                strokeColor: s.racecars[j].color
+            };
+            return l;
+        }));
+        return [].concat.apply([], dots.concat(lines));
     },
     tempStuff: (s) => {
         var endPoint = expandPoint(
@@ -140,7 +160,12 @@ var renderFunctions = {
             s.resolution
         );
         tempPath = new paper.Path(
-            expandPoint(s.racecars[s.turn].p, s.resolution),
+            expandPoint(
+                s.racecars[s.turn].trace[
+                    s.racecars[s.turn].trace.length - 1
+                ],
+                s.resolution
+            ),
             endPoint
         );
         tempPath.style = {
@@ -173,26 +198,35 @@ window.onload = function () {
         canvas.width
     );
 
-    canvas.onmousewheel = function (e) {
-        console.log('s')
+    canvas.onclick = function () {
+        var r = state.racecars[state.turn];
+        var point = roundPoint(
+            state.cursor,
+            state.resolution
+        );
+        var lastPoint = r.trace[r.trace.length - 1];
+        var newV = {
+            x: point.x - lastPoint.x,
+            y: point.y - lastPoint.y
+        };
+        if (
+            Math.abs(newV.x - r.v.x) > 1 ||
+            Math.abs(newV.y - r.v.y) > 1
+        ) { return; }
+        mutations.setVelocity(newV, state.turn);
+        mutations.addTrace(point, state.turn);
+        mutations.setTurn((state.turn + 1) % state.racecars.length);
+    };
 
+    canvas.onmousewheel = function (e) {
         mutations.setResolution(state.resolution - e.deltaY / 50);
 
-        var o = (state.resolution - e.deltaY / 50) / 2;
-
-        mutations.setCanvasOffset(o, o);
+        //var o = state.resolution / 2;
+        //mutations.setCanvasOffset(o, o);
     };
 
     paper.view.onMouseMove = function (e) {
         mutations.setCursor(e.point);
-        /*racecarState[turn] = {
-            x: Math.round(e.point.x / r),
-            y: Math.round(e.point.y / r)
-        };
-        var p = expandPoint(racecarState[turn]);
-        tempPoint.setPosition(p);
-        tempPath.segments[1].setPoint(p);
-        paper.view.draw();*/
     };
 
     paper.view.draw();
