@@ -118,6 +118,41 @@ var mutations = {
     },
 }
 
+function move (state, direction) {
+    var r = state.racecars[state.turn];
+    var newV = {
+        x: r.v.x + direction.x,
+        y: r.v.y + direction.y
+    };
+    var lastPoint = r.trace[r.trace.length - 1];
+    var point = {
+        x: lastPoint.x + newV.x,
+        y: lastPoint.y + newV.y
+    };
+    var newV = {
+        x: r.v.x + direction.x,
+        y: r.v.y + direction.y
+    };
+    if (
+        Math.abs(direction.x) > 1 ||
+        Math.abs(direction.y) > 1
+    ) { return; }
+    var isInBounds = renderings['boundry'][0].contains(
+        expandPoint(point, state.resolution)
+    );
+    console.log(isInBounds);
+    if (isInBounds) {
+        mutations.setVelocity(newV, state.turn);
+    } else {
+        mutations.setVelocity({
+            x: 0,
+            y: 0
+        } , state.turn);
+    }
+    mutations.addTrace(point, state.turn);
+    mutations.setTurn((state.turn + 1) % state.racecars.length);
+} 
+
 var renderings = {};
 
 var renderShortcuts = {
@@ -316,24 +351,10 @@ window.onload = function () {
                 x: point.x - lastPoint.x,
                 y: point.y - lastPoint.y
             };
-            if (
-                Math.abs(newV.x - r.v.x) > 1 ||
-                Math.abs(newV.y - r.v.y) > 1
-            ) { return; }
-            var isInBounds = renderings['boundry'][0].contains(
-                expandPoint(point, state.resolution)
-            );
-            console.log(isInBounds);
-            if (isInBounds) {
-                mutations.setVelocity(newV, state.turn);
-            } else {
-                mutations.setVelocity({
-                    x: 0,
-                    y: 0
-                } , state.turn);
-            }
-            mutations.addTrace(point, state.turn);
-            mutations.setTurn((state.turn + 1) % state.racecars.length);
+            move(state, {
+                x: (point.x - lastPoint.x) - r.v.x,
+                y: (point.y - lastPoint.y) - r.v.y
+            })
         }
     };
 
@@ -365,6 +386,15 @@ window.onload = function () {
             if (e.key === 'd') {
                 mutations.setBoundryMode(false);
             }
+        }
+        else {
+            var left = ['h', 'y', 'b'].indexOf(e.key) != -1;
+            var right = ['l', 'u', 'n'].indexOf(e.key) != -1;
+            var up = ['k', 'y', 'u'].indexOf(e.key) != -1;
+            var down = ['j', 'b', 'n'].indexOf(e.key) != -1;
+            var nx = (left ? -1 : 0) + (right ? 1 : 0);
+            var ny = (up ? -1 : 0) + (down ? 1 : 0);
+            move(state, { x: nx, y: ny });
         }
     }
 
